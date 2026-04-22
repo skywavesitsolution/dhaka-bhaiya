@@ -14,10 +14,11 @@ class AccountsTableSeeder extends Seeder
     {
         DB::table('accounts')->insert([
             [
+                'id' => 1,
                 'account_name' => 'cash in hand',
-                'balance' => 1000.00,
-                'opening_balance' => 1000.00,
-                'account_number' => '1234567890',
+                'balance' => 0.00,
+                'opening_balance' => 0.00,
+                'account_number' => '000000000',
                 'user_id' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),

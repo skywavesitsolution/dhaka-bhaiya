@@ -16,9 +16,7 @@ class BrandSeeder extends Seeder
     {
         $user = User::first();
         DB::table('product_brands')->insert([
-            ['name' => 'Brand A', 'slug' => 'brand-a', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Brand B', 'slug' => 'brand-b', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Brand C', 'slug' => 'brand-c', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 1, 'name' => 'Pizza House', 'slug' => 'pizza-house', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 }

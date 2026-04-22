@@ -16,9 +16,14 @@ class CategorySeeder extends Seeder
     {
         $user = User::first();
         DB::table('product_categories')->insert([
-            ['name' => 'Category A', 'slug' => 'category-a', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Category B', 'slug' => 'category-b', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Category C', 'slug' => 'category-c', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 1, 'name' => 'Special', 'slug' => 'special', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'Pizza Treat', 'slug' => 'pizza-treat', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 3, 'name' => 'Crispy Chicken', 'slug' => 'crispy-chicken', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 4, 'name' => 'Pasta', 'slug' => 'pasta', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 5, 'name' => 'Paratha Roll & Wrap', 'slug' => 'paratha-roll-wrap', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 6, 'name' => 'Sandwich', 'slug' => 'sandwich', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 7, 'name' => 'Starter', 'slug' => 'starter', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 8, 'name' => 'Burger', 'slug' => 'burger', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 }

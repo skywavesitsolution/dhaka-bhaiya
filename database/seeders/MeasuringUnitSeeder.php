@@ -17,6 +17,17 @@ class MeasuringUnitSeeder extends Seeder
         $user = User::first();
         DB::table('measuring_units')->insert([
             [
+                'id' => 1,
+                'name' => 'Pieces',
+                'symbol' => 'pcs',
+                'quantity' => 1,
+                'description' => 'Pieces',
+                'user_id' => $user->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
                 'name' => 'Kilogram',
                 'symbol' => 'kg',
                 'quantity' => 1,
@@ -26,6 +37,7 @@ class MeasuringUnitSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
+                'id' => 3,
                 'name' => 'Litre',
                 'symbol' => 'L',
                 'quantity' => 1,
@@ -35,6 +47,7 @@ class MeasuringUnitSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
+                'id' => 4,
                 'name' => 'Dozen',
                 'symbol' => 'doz',
                 'quantity' => 12,
