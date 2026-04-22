@@ -1174,8 +1174,10 @@
                                                                     onclick="reloadCartData({{ $holdInvoice->id }}, 'invoice')">
                                                                     <i class="mdi mdi-square-edit-outline"></i>
                                                                 </a>
-                                                                <a href="{{ route('delete.holdInvoice', $holdInvoice) }}"><i
-                                                                        class="mdi mdi-trash-can-outline"></i></a>
+                                                                @can('sale.delete_hold_invoice')
+                                                                    <a href="{{ route('delete.holdInvoice', $holdInvoice) }}"><i
+                                                                            class="mdi mdi-trash-can-outline"></i></a>
+                                                                @endcan
                                                             </td>
                                                         </tr>
                                                     @endforeach
@@ -1271,14 +1273,12 @@
                                                                     onclick="reloadCartData({{ $quotationInvoive->id }}, 'quotation')">
                                                                     <i class="mdi mdi-square-edit-outline"></i>
                                                                 </a>
-                                                                {{-- <a
-                                                                    href="{{ route('delete.quotationInvoice', $quotationInvoive->id) }}"><i
-                                                                        class="mdi mdi-trash-can-outline"></i>
-                                                                </a> --}}
-                                                                <button class="btn btn-sm text-danger delete-quotation-btn"
-                                                                    data-id="{{ $quotationInvoive->id }}">
-                                                                    <i class="mdi mdi-trash-can-outline"></i>
-                                                                </button>
+                                                                @can('sale.delete_quotation')
+                                                                    <button class="btn btn-sm text-danger delete-quotation-btn"
+                                                                        data-id="{{ $quotationInvoive->id }}">
+                                                                        <i class="mdi mdi-trash-can-outline"></i>
+                                                                    </button>
+                                                                @endcan
 
                                                                 <a
                                                                     href="{{ route('printquotation', $quotationInvoive->id) }}"><i

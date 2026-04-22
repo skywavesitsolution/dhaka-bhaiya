@@ -34,6 +34,8 @@ class RoleAndPermissionSeeder extends Seeder
             'stock_management.purchase_list',
             'sale.sale',
             'sale.sale_list',
+            'sale.delete_hold_invoice',
+            'sale.delete_quotation',
             'party',
             'accounts.accounts_list',
             'accounts.payments_receiving',
