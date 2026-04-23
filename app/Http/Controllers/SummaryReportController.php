@@ -80,18 +80,56 @@ class SummaryReportController extends Controller
         $makePayment = MakePayment::with('paymentItems')->where('date', $request->date)->get();
         $reaceivedPayment = ReceivedPayment::with('paymentItems')->where('date', $request->date)->get();
 
-        $cashSaleProducts = SaleProduct::join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
-            ->join('product_variants', 'sale_products.product_id', '=', 'product_variants.id') // Fixed typo here
+        $cashSalesRaw = SaleProduct::join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
+            ->join('product_variants', 'sale_products.product_id', '=', 'product_variants.id')
             ->where('sale_invoices.bill_date', $request->date)
             ->where('sale_invoices.payment_type', 'cash')
             ->select(
+                'sale_products.*',
                 'product_variants.product_variant_name as name',
-                'sale_products.sale_qty as quantity',
-                'sale_products.retail_price as price',
-                'sale_products.sale_amount as amount',
-                DB::raw("'General Sales (cash)' as sale_type")
+                'product_variants.manage_deal_items'
             )
             ->get();
+
+        $cashSaleProducts = [];
+        foreach ($cashSalesRaw as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion logic
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $cashSaleProducts[] = (object)[
+                            'name' => $item->products->product_variant_name ?? 'Unknown',
+                            'quantity' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'amount' => $isFirst ? floatval($sale->sale_amount) : 0,
+                            'sale_type' => 'General Sales (cash)'
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    $cashSaleProducts[] = (object)[
+                        'name' => $sale->name,
+                        'quantity' => floatval($sale->sale_qty),
+                        'price' => floatval($sale->retail_price),
+                        'amount' => floatval($sale->sale_amount),
+                        'sale_type' => 'General Sales (cash)'
+                    ];
+                }
+            } else {
+                $cashSaleProducts[] = (object)[
+                    'name' => $sale->name,
+                    'quantity' => floatval($sale->sale_qty),
+                    'price' => floatval($sale->retail_price),
+                    'amount' => floatval($sale->sale_amount),
+                    'sale_type' => 'General Sales (cash)'
+                ];
+            }
+        }
 
         // dd($cashSaleProducts);
 
@@ -109,19 +147,56 @@ class SummaryReportController extends Controller
         //     ->toArray();
         $allSales = $cashSaleProducts;
 
-        $creditSaleProducts = SaleProduct::join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
+        $creditSalesRaw = SaleProduct::join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
             ->join('product_variants', 'sale_products.product_id', '=', 'product_variants.id')
-            // ->join('product_categories', 'product_types.category_id', '=', 'product_categories.id')
             ->where('sale_invoices.bill_date', $request->date)
             ->where('sale_invoices.payment_type', 'credit')
             ->select(
+                'sale_products.*',
                 'product_variants.product_variant_name as name',
-                'sale_products.sale_qty as quantity',
-                'sale_products.retail_price as price',
-                'sale_products.sale_amount as amount',
-                DB::raw('"General Sales (Credit)" as sale_type')
+                'product_variants.manage_deal_items'
             )
             ->get();
+
+        $creditSaleProducts = [];
+        foreach ($creditSalesRaw as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion logic
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $creditSaleProducts[] = (object)[
+                            'name' => $item->products->product_variant_name ?? 'Unknown',
+                            'quantity' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'amount' => $isFirst ? floatval($sale->sale_amount) : 0,
+                            'sale_type' => 'General Sales (Credit)'
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    $creditSaleProducts[] = (object)[
+                        'name' => $sale->name,
+                        'quantity' => floatval($sale->sale_qty),
+                        'price' => floatval($sale->retail_price),
+                        'amount' => floatval($sale->sale_amount),
+                        'sale_type' => 'General Sales (Credit)'
+                    ];
+                }
+            } else {
+                $creditSaleProducts[] = (object)[
+                    'name' => $sale->name,
+                    'quantity' => floatval($sale->sale_qty),
+                    'price' => floatval($sale->retail_price),
+                    'amount' => floatval($sale->sale_amount),
+                    'sale_type' => 'General Sales (Credit)'
+                ];
+            }
+        }
 
         $date = $request->date;
         return view('adminPanel.Summary.daySummary', compact(
