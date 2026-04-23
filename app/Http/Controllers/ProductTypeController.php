@@ -221,80 +221,124 @@ class ProductTypeController extends Controller
             'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
-        // Base query for service items
-        $salesQuery = DB::table('sale_products')
+        // Fetch raw sales data for the selected period
+        $query = DB::table('sale_products')
             ->join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
-            ->join('product_variants', 'product_variants.id', '=', 'sale_products.product_id')
-            ->where('product_variants.service_item', true)
-            ->select(
-                'sale_products.invoice_id',
-                'sale_invoices.bill_date',
-                'product_variants.product_variant_name as product_name',
-                'sale_products.sale_qty',
-                'sale_products.retail_price',
-                DB::raw('COALESCE(sale_products.sale_discount_actual_value, 0) as product_discount_actual_value'),
-                DB::raw('(sale_products.retail_price * sale_products.sale_qty) - COALESCE(sale_products.sale_discount_actual_value, 0) as net_payable'),
-                DB::raw('"Service Item" as item_type')
-            );
+            ->join('product_variants', 'product_variants.id', '=', 'sale_products.product_id');
 
-        // Base query for raw materials
-        $rawMaterialsQuery = DB::table('sale_products')
-            ->join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
-            ->join('product_variants as service_variants', 'service_variants.id', '=', 'sale_products.product_id')
-            ->join('ingredients', 'ingredients.product_variant_id', '=', 'sale_products.product_id')
-            ->join('ingredients_items', 'ingredients_items.ingredients_id', '=', 'ingredients.id')
-            ->join('product_variants as raw_variants', 'raw_variants.id', '=', 'ingredients_items.product_variant_id')
-            ->where('raw_variants.raw_material', true)
-            ->select(
-                'sale_products.invoice_id',
-                'sale_invoices.bill_date',
-                'raw_variants.product_variant_name as product_name',
-                DB::raw('sale_products.sale_qty * ingredients_items.qty as sale_qty'),
-                DB::raw('0 as retail_price'),
-                DB::raw('0 as product_discount_actual_value'),
-                DB::raw('0 as net_payable'),
-                DB::raw('"Ingredient" as item_type')
-            );
+        // Apply filters
+        if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+            $query->whereBetween('sale_invoices.bill_date', [$validated['start_date'], $validated['end_date']]);
+        } elseif (!empty($validated['start_date'])) {
+            $query->where('sale_invoices.bill_date', '>=', $validated['start_date']);
+        } elseif (!empty($validated['end_date'])) {
+            $query->where('sale_invoices.bill_date', '<=', $validated['end_date']);
+        }
 
-        // Apply filters based on product_id
         if ($validated['product_id'] !== 'all_products') {
-            $selectedProduct = \App\Models\Product\Variant\ProductVariant::find($validated['product_id']);
+            // If filtering for a specific product, we'll filter in PHP later to include deal components
+        }
 
-            if ($selectedProduct) {
-                if ($selectedProduct->service_item) {
-                    $salesQuery->where('sale_products.product_id', $validated['product_id']);
-                    $rawMaterialsQuery = null; // Exclude raw materials
-                } elseif ($selectedProduct->raw_material) {
-                    $salesQuery = null; // No service items
-                    $rawMaterialsQuery->where('ingredients_items.product_variant_id', $validated['product_id']);
+        $sales = $query->select(
+            'sale_products.invoice_id',
+            'sale_invoices.bill_date',
+            'sale_products.product_id',
+            'product_variants.product_variant_name',
+            'product_variants.service_item',
+            'product_variants.raw_material',
+            'product_variants.finish_goods',
+            'product_variants.manage_deal_items',
+            'sale_products.sale_qty',
+            'sale_products.retail_price',
+            'sale_products.sale_discount_actual_value'
+        )->get();
+
+        $processed_data = [];
+
+        foreach ($sales as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $processed_data[] = (object)[
+                            'invoice_id' => $sale->invoice_id,
+                            'bill_date' => $sale->bill_date,
+                            'product_id' => $item->product_variant_id,
+                            'product_name' => $item->products->product_variant_name ?? 'Unknown',
+                            'item_type' => 'Deal Item',
+                            'sale_qty' => $sale->sale_qty * $item->product_variant_qty,
+                            'retail_price' => $isFirst ? $sale->retail_price : 0,
+                            'product_discount_actual_value' => $isFirst ? ($sale->sale_discount_actual_value ?? 0) : 0,
+                            'net_payable' => $isFirst ? (($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0)) : 0,
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    // Fallback
+                    $processed_data[] = (object)[
+                        'invoice_id' => $sale->invoice_id,
+                        'bill_date' => $sale->bill_date,
+                        'product_id' => $sale->product_id,
+                        'product_name' => $sale->product_variant_name,
+                        'item_type' => 'Deal (No Items)',
+                        'sale_qty' => $sale->sale_qty,
+                        'retail_price' => $sale->retail_price,
+                        'product_discount_actual_value' => $sale->sale_discount_actual_value ?? 0,
+                        'net_payable' => ($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0),
+                    ];
+                }
+            } else {
+                // Regular Item (Finish Goods or Service Item)
+                $processed_data[] = (object)[
+                    'invoice_id' => $sale->invoice_id,
+                    'bill_date' => $sale->bill_date,
+                    'product_id' => $sale->product_id,
+                    'product_name' => $sale->product_variant_name,
+                    'item_type' => $sale->service_item ? 'Service Item' : ($sale->raw_material ? 'Raw Material' : 'Finish Good'),
+                    'sale_qty' => $sale->sale_qty,
+                    'retail_price' => $sale->retail_price,
+                    'product_discount_actual_value' => $sale->sale_discount_actual_value ?? 0,
+                    'net_payable' => ($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0),
+                ];
+
+                // If it's a service item, also include ingredients (old logic)
+                if ($sale->service_item) {
+                    $ingredients = \App\Models\Ingredient::where('product_variant_id', $sale->product_id)
+                        ->with('ingredients_items.products')
+                        ->first();
+                    
+                    if ($ingredients) {
+                        foreach ($ingredients->ingredients_items as $ingItem) {
+                            $processed_data[] = (object)[
+                                'invoice_id' => $sale->invoice_id,
+                                'bill_date' => $sale->bill_date,
+                                'product_id' => $ingItem->product_variant_id,
+                                'product_name' => $ingItem->products->product_variant_name ?? 'Ingredient',
+                                'item_type' => 'Ingredient',
+                                'sale_qty' => $sale->sale_qty * $ingItem->qty,
+                                'retail_price' => 0,
+                                'product_discount_actual_value' => 0,
+                                'net_payable' => 0,
+                            ];
+                        }
+                    }
                 }
             }
         }
 
-        // Apply date range filter to both queries (if they exist)
-        $dateFilter = function ($query) use ($validated) {
-            if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
-                $query->whereBetween('sale_invoices.bill_date', [$validated['start_date'], $validated['end_date']]);
-            } elseif (!empty($validated['start_date'])) {
-                $query->where('sale_invoices.bill_date', '>=', $validated['start_date']);
-            } elseif (!empty($validated['end_date'])) {
-                $query->where('sale_invoices.bill_date', '<=', $validated['end_date']);
-            }
-        };
-
-        if ($salesQuery) $dateFilter($salesQuery);
-        if ($rawMaterialsQuery) $dateFilter($rawMaterialsQuery);
-
-        // Combine results based on what’s available
-        if ($salesQuery && $rawMaterialsQuery) {
-            $sale_data = $salesQuery->union($rawMaterialsQuery)->get();
-        } elseif ($salesQuery) {
-            $sale_data = $salesQuery->get();
-        } elseif ($rawMaterialsQuery) {
-            $sale_data = $rawMaterialsQuery->get();
-        } else {
-            $sale_data = collect();
+        // Apply final product filter
+        if ($validated['product_id'] !== 'all_products') {
+            $processed_data = array_filter($processed_data, function($item) use ($validated) {
+                return $item->product_id == $validated['product_id'];
+            });
         }
+
+        $sale_data = collect($processed_data);
 
         return view('adminPanel.orders.reports.product_sale_report', [
             'sale_data' => $sale_data,

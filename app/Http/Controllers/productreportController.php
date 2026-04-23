@@ -326,9 +326,6 @@ class productreportController extends Controller
         ]);
     }
 
-
-
-
     public function product_sale_reports()
     {
         $allProducts = ProductVariant::with('measuringUnit')
@@ -388,18 +385,104 @@ class productreportController extends Controller
             ->whereBetween('bill_date', [$request->start_date, $request->end_date])
             ->sum('discount_actual_value') ?? 0;
 
-        // Fetch sale data with proper null handling
-        $sale_data = $query->select(
+        // Fetch raw sale data
+        $sales = $query->select(
             'sale_products.product_id',
-            'product_variants.product_variant_name as product_name',
+            'product_variants.product_variant_name',
+            'product_variants.manage_deal_items',
             'sale_invoices.bill_date',
-            DB::raw('MAX(sale_products.retail_price) as retail_price'),
-            DB::raw('SUM(sale_products.sale_qty) as total_sale_qty'),
-            DB::raw('COALESCE(SUM(sale_products.sale_discount_actual_value), 0) as total_discount'), // Handle null
-            DB::raw('(MAX(sale_products.retail_price) * SUM(sale_products.sale_qty)) - COALESCE(SUM(sale_products.sale_discount_actual_value), 0) as total_sale_amount') // Handle null
-        )
-            ->groupBy('sale_products.product_id', 'sale_invoices.bill_date', 'product_variants.product_variant_name')
-            ->get();
+            'sale_products.retail_price',
+            'sale_products.sale_qty',
+            'sale_products.sale_discount_actual_value'
+        )->get();
+
+        $processed_data = [];
+
+        foreach ($sales as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Fetch deal components
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $pId = $item->product_variant_id;
+                        $pName = $item->products->product_variant_name ?? 'Unknown';
+                        $date = $sale->bill_date;
+                        $key = $pId . '_' . $date;
+
+                        if (!isset($processed_data[$key])) {
+                            $processed_data[$key] = (object)[
+                                'product_id' => $pId,
+                                'product_name' => $pName,
+                                'bill_date' => $date,
+                                'retail_price' => 0,
+                                'total_sale_qty' => 0,
+                                'total_discount' => 0,
+                                'total_sale_amount' => 0,
+                            ];
+                        }
+
+                        $processed_data[$key]->total_sale_qty += $sale->sale_qty * $item->product_variant_qty;
+
+                        // Attach financials only to the first component to avoid double counting deal revenue
+                        if ($isFirst) {
+                            $processed_data[$key]->total_sale_amount += ($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0);
+                            $processed_data[$key]->total_discount += ($sale->sale_discount_actual_value ?? 0);
+                            $processed_data[$key]->retail_price = max($processed_data[$key]->retail_price, $sale->retail_price);
+                            $isFirst = false;
+                        }
+                    }
+                } else {
+                    // Fallback if deal setup is missing: treat as regular
+                    $key = $sale->product_id . '_' . $sale->bill_date;
+                    if (!isset($processed_data[$key])) {
+                        $processed_data[$key] = (object)[
+                            'product_id' => $sale->product_id,
+                            'product_name' => $sale->product_variant_name,
+                            'bill_date' => $sale->bill_date,
+                            'retail_price' => $sale->retail_price,
+                            'total_sale_qty' => 0,
+                            'total_discount' => 0,
+                            'total_sale_amount' => 0,
+                        ];
+                    }
+                    $processed_data[$key]->total_sale_qty += $sale->sale_qty;
+                    $processed_data[$key]->total_discount += ($sale->sale_discount_actual_value ?? 0);
+                    $processed_data[$key]->total_sale_amount += ($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0);
+                    $processed_data[$key]->retail_price = max($processed_data[$key]->retail_price, $sale->retail_price);
+                }
+            } else {
+                // Regular item
+                $key = $sale->product_id . '_' . $sale->bill_date;
+                if (!isset($processed_data[$key])) {
+                    $processed_data[$key] = (object)[
+                        'product_id' => $sale->product_id,
+                        'product_name' => $sale->product_variant_name,
+                        'bill_date' => $sale->bill_date,
+                        'retail_price' => $sale->retail_price,
+                        'total_sale_qty' => 0,
+                        'total_discount' => 0,
+                        'total_sale_amount' => 0,
+                    ];
+                }
+                $processed_data[$key]->total_sale_qty += $sale->sale_qty;
+                $processed_data[$key]->total_discount += ($sale->sale_discount_actual_value ?? 0);
+                $processed_data[$key]->total_sale_amount += ($sale->retail_price * $sale->sale_qty) - ($sale->sale_discount_actual_value ?? 0);
+                $processed_data[$key]->retail_price = max($processed_data[$key]->retail_price, $sale->retail_price);
+            }
+        }
+
+        // Apply manual filter for product_id if specified (as expanding might have introduced/filtered items)
+        if ($request->product_id && $request->product_id != 'all_products') {
+            $processed_data = array_filter($processed_data, function($item) use ($request) {
+                return $item->product_id == $request->product_id;
+            });
+        }
+
+        $sale_data = collect(array_values($processed_data))->sortBy('bill_date');
 
         // Debug: Uncomment to check data
         // dd($sale_data);
@@ -484,16 +567,66 @@ class productreportController extends Controller
         $sale_data = $query->select(
             'sale_products.*',
             'sale_invoices.bill_date',
-            'sale_invoices.net_payable',
+            'sale_invoices.net_payable as invoice_net_payable',
             'product_variants.product_variant_name as product_name',
-            'product_brands.name as brand_name' // Get brand name from product_brands
+            'product_variants.manage_deal_items',
+            'product_brands.name as brand_name'
         )->get();
 
+        $processed_data = [];
+        foreach ($sale_data as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $processed_data[] = (object)[
+                            'invoice_id' => $sale->invoice_id,
+                            'product_name' => $item->products->product_variant_name ?? 'Unknown',
+                            'bill_date' => $sale->bill_date,
+                            'brand_name' => $sale->brand_name,
+                            'sale_qty' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'retail_price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'product_discount_actual_value' => $isFirst ? floatval($sale->sale_discount_actual_value ?? 0) : 0,
+                            'net_payable' => $isFirst ? floatval($sale->sale_amount) : 0,
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    // Fallback
+                    $processed_data[] = (object)[
+                        'invoice_id' => $sale->invoice_id,
+                        'product_name' => $sale->product_name,
+                        'bill_date' => $sale->bill_date,
+                        'brand_name' => $sale->brand_name,
+                        'sale_qty' => floatval($sale->sale_qty),
+                        'retail_price' => floatval($sale->retail_price),
+                        'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                        'net_payable' => floatval($sale->sale_amount),
+                    ];
+                }
+            } else {
+                $processed_data[] = (object)[
+                    'invoice_id' => $sale->invoice_id,
+                    'product_name' => $sale->product_name,
+                    'bill_date' => $sale->bill_date,
+                    'brand_name' => $sale->brand_name,
+                    'sale_qty' => floatval($sale->sale_qty),
+                    'retail_price' => floatval($sale->retail_price),
+                    'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                    'net_payable' => floatval($sale->sale_amount),
+                ];
+            }
+        }
 
         // Return the view with sale data and validated request
         return view('adminPanel.orders.reports.sale.brand_wise_sale_report', [
-            'sale_data' => $sale_data,
-            'request' => $validated,  // Pass validated parameters to the view
+            'sale_data' => $processed_data,
+            'request' => $validated,
         ]);
     }
     public function customer_wise_product_sale_report(Request $request)
@@ -534,16 +667,66 @@ class productreportController extends Controller
         $sale_data = $query->select(
             'sale_products.*',
             'sale_invoices.bill_date',
-            'sale_invoices.net_payable',
+            'sale_invoices.net_payable as invoice_net_payable',
             'product_variants.product_variant_name as product_name',
-            'parties.name as customer_name' // Get brand name from product_brands
+            'product_variants.manage_deal_items',
+            'parties.name as customer_name'
         )->get();
 
+        $processed_data = [];
+        foreach ($sale_data as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $processed_data[] = (object)[
+                            'invoice_id' => $sale->invoice_id,
+                            'product_name' => $item->products->product_variant_name ?? 'Unknown',
+                            'bill_date' => $sale->bill_date,
+                            'customer_name' => $sale->customer_name,
+                            'sale_qty' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'retail_price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'product_discount_actual_value' => $isFirst ? floatval($sale->sale_discount_actual_value ?? 0) : 0,
+                            'net_payable' => $isFirst ? floatval($sale->sale_amount) : 0,
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    // Fallback
+                    $processed_data[] = (object)[
+                        'invoice_id' => $sale->invoice_id,
+                        'product_name' => $sale->product_name,
+                        'bill_date' => $sale->bill_date,
+                        'customer_name' => $sale->customer_name,
+                        'sale_qty' => floatval($sale->sale_qty),
+                        'retail_price' => floatval($sale->retail_price),
+                        'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                        'net_payable' => floatval($sale->sale_amount),
+                    ];
+                }
+            } else {
+                $processed_data[] = (object)[
+                    'invoice_id' => $sale->invoice_id,
+                    'product_name' => $sale->product_name,
+                    'bill_date' => $sale->bill_date,
+                    'customer_name' => $sale->customer_name,
+                    'sale_qty' => floatval($sale->sale_qty),
+                    'retail_price' => floatval($sale->retail_price),
+                    'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                    'net_payable' => floatval($sale->sale_amount),
+                ];
+            }
+        }
 
         // Return the view with sale data and validated request
         return view('adminPanel.orders.reports.sale.customer_wise_sale_report', [
-            'sale_data' => $sale_data,
-            'request' => $validated,  // Pass validated parameters to the view
+            'sale_data' => $processed_data,
+            'request' => $validated,
         ]);
     }
 
@@ -631,39 +814,90 @@ class productreportController extends Controller
             $query->where('sale_invoices.bill_date', '<=', $validated['end_date']);
         }
 
-        // Fetch the sale data with necessary fields
+        // Fetch raw sale data with deal info
         $sale_data = $query->select(
             'sale_products.*',
             'sale_invoices.bill_date',
-            'sale_invoices.net_payable',
+            'sale_invoices.net_payable as invoice_net_payable',
             'product_variants.product_variant_name as product_name',
+            'product_variants.manage_deal_items',
             'product_categories.name as category_name',
-            'products.id as product_id'
+            'products.id as main_product_id'
         )->get();
 
         // Group data by product
         $grouped_data = [];
+        
         foreach ($sale_data as $sale) {
-            $product_id = $sale->product_id;
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products.product.category')
+                    ->first();
 
-            if (!isset($grouped_data[$product_id])) {
-                $grouped_data[$product_id] = [
-                    'product_name' => $sale->product_name,
-                    'category_name' => $sale->category_name,
-                    'total_qty' => 0,
-                    'retail_price' => $sale->retail_price,
-                    'total_amount' => 0,
-                    'total_discount' => 0
-                ];
-            }
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $pId = $item->product_variant_id;
+                        $pName = $item->products->product_variant_name ?? 'Unknown';
+                        $catName = $item->products->product->category->name ?? 'Uncategorized';
 
-            // Convert sale_qty to float and add to total
-            $grouped_data[$product_id]['total_qty'] += floatval($sale->sale_qty);
-            $grouped_data[$product_id]['total_amount'] += floatval($sale->sale_amount);
+                        if (!isset($grouped_data[$pId])) {
+                            $grouped_data[$pId] = [
+                                'product_name' => $pName,
+                                'category_name' => $catName,
+                                'total_qty' => 0,
+                                'retail_price' => 0,
+                                'total_amount' => 0,
+                                'total_discount' => 0
+                            ];
+                        }
 
-            // Calculate discount if available
-            if ($sale->sale_discount_actual_value) {
-                $grouped_data[$product_id]['total_discount'] += floatval($sale->sale_discount_actual_value);
+                        $grouped_data[$pId]['total_qty'] += floatval($sale->sale_qty) * $item->product_variant_qty;
+                        
+                        // Attach financials only to the first component
+                        if ($isFirst) {
+                            $grouped_data[$pId]['total_amount'] += floatval($sale->sale_amount);
+                            $grouped_data[$pId]['total_discount'] += floatval($sale->sale_discount_actual_value ?? 0);
+                            $grouped_data[$pId]['retail_price'] = max($grouped_data[$pId]['retail_price'], floatval($sale->retail_price));
+                            $isFirst = false;
+                        }
+                    }
+                } else {
+                    // Fallback
+                    $pId = $sale->product_id;
+                    if (!isset($grouped_data[$pId])) {
+                        $grouped_data[$pId] = [
+                            'product_name' => $sale->product_name,
+                            'category_name' => $sale->category_name,
+                            'total_qty' => 0,
+                            'retail_price' => floatval($sale->retail_price),
+                            'total_amount' => 0,
+                            'total_discount' => 0
+                        ];
+                    }
+                    $grouped_data[$pId]['total_qty'] += floatval($sale->sale_qty);
+                    $grouped_data[$pId]['total_amount'] += floatval($sale->sale_amount);
+                    $grouped_data[$pId]['total_discount'] += floatval($sale->sale_discount_actual_value ?? 0);
+                }
+            } else {
+                // Regular Item
+                $pId = $sale->product_id;
+
+                if (!isset($grouped_data[$pId])) {
+                    $grouped_data[$pId] = [
+                        'product_name' => $sale->product_name,
+                        'category_name' => $sale->category_name,
+                        'total_qty' => 0,
+                        'retail_price' => floatval($sale->retail_price),
+                        'total_amount' => 0,
+                        'total_discount' => 0
+                    ];
+                }
+
+                $grouped_data[$pId]['total_qty'] += floatval($sale->sale_qty);
+                $grouped_data[$pId]['total_amount'] += floatval($sale->sale_amount);
+                $grouped_data[$pId]['total_discount'] += floatval($sale->sale_discount_actual_value ?? 0);
             }
         }
 
@@ -709,19 +943,70 @@ class productreportController extends Controller
         }
 
         // Fetch the sale data with necessary fields
+        // Fetch raw sale data with deal info
         $sale_data = $query->select(
             'sale_products.*',
             'sale_invoices.bill_date',
             'sale_invoices.net_payable',
             'product_variants.product_variant_name as product_name',
-            'product_locations.name as location_name' // Get brand name from product_brands
+            'product_variants.manage_deal_items',
+            'product_locations.name as location_name'
         )->get();
 
+        $processed_data = [];
+        foreach ($sale_data as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $processed_data[] = (object)[
+                            'invoice_id' => $sale->invoice_id,
+                            'product_name' => $item->products->product_variant_name ?? 'Unknown',
+                            'bill_date' => $sale->bill_date,
+                            'location_name' => $sale->location_name,
+                            'sale_qty' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'retail_price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'product_discount_actual_value' => $isFirst ? floatval($sale->sale_discount_actual_value ?? 0) : 0,
+                            'net_payable' => $isFirst ? floatval($sale->sale_amount) : 0,
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    // Fallback
+                    $processed_data[] = (object)[
+                        'invoice_id' => $sale->invoice_id,
+                        'product_name' => $sale->product_name,
+                        'bill_date' => $sale->bill_date,
+                        'location_name' => $sale->location_name,
+                        'sale_qty' => floatval($sale->sale_qty),
+                        'retail_price' => floatval($sale->retail_price),
+                        'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                        'net_payable' => floatval($sale->sale_amount),
+                    ];
+                }
+            } else {
+                $processed_data[] = (object)[
+                    'invoice_id' => $sale->invoice_id,
+                    'product_name' => $sale->product_name,
+                    'bill_date' => $sale->bill_date,
+                    'location_name' => $sale->location_name,
+                    'sale_qty' => floatval($sale->sale_qty),
+                    'retail_price' => floatval($sale->retail_price),
+                    'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                    'net_payable' => floatval($sale->sale_amount),
+                ];
+            }
+        }
 
         // Return the view with sale data and validated request
         return view('adminPanel.orders.reports.sale.location_wise_sale_report', [
-            'sale_data' => $sale_data,
-            'request' => $validated,  // Pass validated parameters to the view
+            'sale_data' => $processed_data,
+            'request' => $validated,
         ]);
     }
     public function date_wise_product_sale_summary(Request $request)
@@ -766,11 +1051,11 @@ class productreportController extends Controller
         // Start the query to fetch sale data
         $query = DB::table('sale_products')
             ->join('sale_invoices', 'sale_invoices.id', '=', 'sale_products.invoice_id')
-            ->join('product_variants', 'product_variants.id', '=', 'sale_products.product_id') // Correct the column name
-            ->join('products', 'products.id', '=', 'product_variants.product_id') // Join products table to get the brand_id
-            ->join('employees', 'employees.id', '=', 'sale_invoices.employee_id'); // Join product_brands table
+            ->join('product_variants', 'product_variants.id', '=', 'sale_products.product_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->leftJoin('employees', 'employees.id', '=', 'sale_invoices.employee_id');
 
-        // Apply the brand filter if a specific brand is selected (not 'all_brands')
+        // Apply the employee filter if a specific employee is selected (not 'all_employee')
         if ($validated['employee_id'] != 'all_employee') {
             $query->where('employees.id', $validated['employee_id']);
         }
@@ -792,16 +1077,76 @@ class productreportController extends Controller
         $sale_data = $query->select(
             'sale_products.*',
             'sale_invoices.bill_date',
-            'sale_invoices.net_payable',
+            'sale_invoices.net_payable as invoice_net_payable',
             'product_variants.product_variant_name as product_name',
-            'employees.name as employee_name' // Get brand name from product_brands
+            'product_variants.manage_deal_items',
+            'employees.name as employee_name'
         )->get();
 
+        $processed_data = [];
+        foreach ($sale_data as $sale) {
+            if ($sale->manage_deal_items > 0) {
+                // Deal Expansion
+                $deal = \App\Models\Deals\DealTable::where('product_variant_deal_id', $sale->product_id)
+                    ->with('deal_item.products')
+                    ->first();
+
+                if ($deal && $deal->deal_item->count() > 0) {
+                    $isFirst = true;
+                    foreach ($deal->deal_item as $item) {
+                        $processed_data[] = (object)[
+                            'invoice_id' => $sale->invoice_id,
+                            'product_name' => $item->products->product_variant_name ?? 'Unknown',
+                            'bill_date' => $sale->bill_date,
+                            'employee_name' => $sale->employee_name,
+                            'sale_qty' => floatval($sale->sale_qty) * $item->product_variant_qty,
+                            'retail_price' => $isFirst ? floatval($sale->retail_price) : 0,
+                            'product_discount_actual_value' => $isFirst ? floatval($sale->sale_discount_actual_value ?? 0) : 0,
+                            'net_payable' => $isFirst ? floatval($sale->sale_amount) : 0,
+                        ];
+                        $isFirst = false;
+                    }
+                } else {
+                    // Fallback
+                    $processed_data[] = (object)[
+                        'invoice_id' => $sale->invoice_id,
+                        'product_name' => $sale->product_name,
+                        'bill_date' => $sale->bill_date,
+                        'employee_name' => $sale->employee_name,
+                        'sale_qty' => floatval($sale->sale_qty),
+                        'retail_price' => floatval($sale->retail_price),
+                        'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                        'net_payable' => floatval($sale->sale_amount),
+                    ];
+                }
+            } else {
+                $processed_data[] = (object)[
+                    'invoice_id' => $sale->invoice_id,
+                    'product_name' => $sale->product_name,
+                    'bill_date' => $sale->bill_date,
+                    'employee_name' => $sale->employee_name,
+                    'sale_qty' => floatval($sale->sale_qty),
+                    'retail_price' => floatval($sale->retail_price),
+                    'product_discount_actual_value' => floatval($sale->sale_discount_actual_value ?? 0),
+                    'net_payable' => floatval($sale->sale_amount),
+                ];
+            }
+        }
+
+        // Calculate total summary for footer
+        $total_amount = 0;
+        $qty_total = 0;
+        foreach($processed_data as $row) {
+            $total_amount += $row->net_payable;
+            $qty_total += $row->sale_qty;
+        }
 
         // Return the view with sale data and validated request
         return view('adminPanel.orders.reports.sale.employee_wise_sale_report', [
-            'sale_data' => $sale_data,
-            'request' => $validated,  // Pass validated parameters to the view
+            'sale_data' => $processed_data,
+            'request' => $validated,
+            'total_amount' => $total_amount,
+            'qty_total' => $qty_total,
         ]);
     }
     public function date_wise_profit_margin(Request $request)

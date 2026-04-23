@@ -131,7 +131,6 @@ use App\Helpers\Helper;
 
                                 <div class="tab-content">
                                     <div class="tab-pane" id="product_sale_report">
-
                                         <div class="row">
                                             <div class="col-md-12">
                                                 <h5>All Product Sale Report</h5>
@@ -205,7 +204,7 @@ use App\Helpers\Helper;
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="tab-pane" id="invoice_profit_report">
+                                    <!-- <div class="tab-pane" id="invoice_profit_report">
                                         <div class="row">
                                             <div class="col-md-12">
                                                 <h5>Invoice wise Profit Report</h5>
@@ -237,7 +236,7 @@ use App\Helpers\Helper;
                                                 </form>
                                             </div>
                                         </div>
-                                    </div>
+                                    </div> -->
                                     <div class="tab-pane" id="date_wise_sale_summary">
                                         <div class="row">
                                             <div class="col-md-12">

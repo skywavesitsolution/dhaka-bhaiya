@@ -496,21 +496,21 @@ $agent_data = Auth::user()->img;
                                             <a href="{{ URL::to('product-purchase-reports') }}">Purchase Report</a>
                                         </li>
                                     @endcan
-                                    @can('reports.expanse_report')
+                                    <!-- @can('reports.expanse_report') -->
                                         <li>
                                             <a href="{{ URL::to('expense-reports') }}">Expense Report</a>
                                         </li>
-                                    @endcan
+                                    <!-- @endcan -->
                                     @can('reports.payments_recv_report')
                                         <li>
                                             <a href="{{ URL::to('payments-report') }}">Payments & Recv Report</a>
                                         </li>
                                     @endcan
-                                    @can('reports.ledgers_reports')
+                                    <!-- @can('reports.ledgers_reports') -->
                                         <li>
                                             <a href="{{ URL::to('ledger-reports') }}">Ledgers Reports</a>
                                         </li>
-                                    @endcan
+                                    <!-- @endcan -->
                                     @can('reports.summary_reports')
                                         <li>
                                             <a href="{{ URL::to('summary-reports') }}">Summary Reports</a>

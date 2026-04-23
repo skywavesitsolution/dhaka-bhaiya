@@ -15,7 +15,7 @@ use App\Helpers\Helper;
 @endif
 
 
-</section>
+
 <div class="row pl-5 pr-5">
     <div class="col-md-9">
         <h5>Report </h5>
@@ -62,8 +62,8 @@ use App\Helpers\Helper;
                         <th style="border:1px solid black;">Employee Name</th>
                         <th style="border:1px solid black;">Product Name</th>
                         <th style="border:1px solid black;">Quantity</th>
-                        <th style="border:1px solid black;">Retail Price</th>
-                        <th style="border:1px solid black;">Discount</th>
+                        {{-- <th style="border:1px solid black;">Retail Price</th>
+                        <th style="border:1px solid black;">Discount</th> --}}
                         <th style="border:1px solid black;">Total</th>
                     </tr>
 
@@ -79,17 +79,13 @@ use App\Helpers\Helper;
                                 <td style="border:1px solid black;">{{ $loop->iteration }}</td>
                                 <td style="border:1px solid black;">{{ $sale->invoice_id }}</td>
                                 <td style="border:1px solid black;">{{ date('d-m-Y', strtotime($sale->bill_date)) }}</td>
-                                <td style="border:1px solid black;">{{ $sale->employee_name }}</td>
+                                <td style="border:1px solid black;">{{ $sale->employee_name ?? 'N/A' }}</td>
                                 <td style="border:1px solid black;">{{ $sale->product_name }}</td>
-                                <td style="border:1px solid black;">{{ $sale->sale_qty }}</td>
-                                <td style="border:1px solid black;">{{ number_format($sale->retail_price, 2) }}</td>
-                                <td style="border:1px solid black;">{{ number_format($sale->product_discount_actual_value ?? 0, 2) }}</td>
+                                <td style="border:1px solid black;">{{ number_format($sale->sale_qty, 2) }}</td>
+                                {{-- <td style="border:1px solid black;">{{ number_format($sale->retail_price, 2) }}</td>
+                                <td style="border:1px solid black;">{{ number_format($sale->product_discount_actual_value ?? 0, 2) }}</td> --}}
                                 <td style="border:1px solid black;">{{ number_format($sale->net_payable, 2) }}</td>
                             </tr>
-                            @php
-                                $total_amount += $sale->net_payable;
-                                $qty_total += $sale->sale_qty;
-                            @endphp
                         @endforeach
                     @endisset
 
@@ -104,9 +100,8 @@ use App\Helpers\Helper;
                         <td style="border:1px solid black;"></td>
                         <td style="border:1px solid black;"></td>
                         <td style="border:1px solid black;">{{ number_format($qty_total, 2) }}</td>
-                        <td style="border:1px solid black;"></td>
-                        {{-- <td style="border:1px solid black;"></td> --}}
-                        <td style="border:1px solid black;"></td>
+                        {{-- <td style="border:1px solid black;"></td>
+                        <td style="border:1px solid black;"></td> --}}
                         <td style="border:1px solid black;">{{ number_format($total_amount, 2) }}</td>
                     </tr>
                 </tfoot>
