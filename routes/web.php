@@ -453,6 +453,7 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth'])->group(function () {
     Route::middleware('can:user_management.user_list')->group(function () {
         Route::get('/users-list', [UserController::class, 'usersList']);
+        Route::get('/add-user', [UserController::class, 'createUser']);
         Route::post('/add-user', [UserController::class, 'registerUser']);
         Route::post('/update-user', [UserController::class, 'updateUser']);
     });

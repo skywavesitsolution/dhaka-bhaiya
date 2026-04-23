@@ -18,6 +18,11 @@ class UserController extends Controller
         return view('adminPanel.userManagement.userList', ['users' => $users]);
     }
 
+    public function createUser()
+    {
+        return view('adminPanel.userManagement.createUser');
+    }
+
     public function registerUser(Request $request)
     {
         $request->validate([
@@ -41,7 +46,7 @@ class UserController extends Controller
             $user->syncPermissions($request->userRight);
         }
 
-        return redirect()->back()->with(['success' => 'User created successfully']);
+        return redirect('/users-list')->with(['success' => 'User created successfully']);
     }
 
     public function updateUser(Request $request)

@@ -24,6 +24,8 @@ class CategorySeeder extends Seeder
             ['id' => 6, 'name' => 'Sandwich', 'slug' => 'sandwich', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
             ['id' => 7, 'name' => 'Starter', 'slug' => 'starter', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
             ['id' => 8, 'name' => 'Burger', 'slug' => 'burger', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 8, 'name' => 'Deal', 'slug' => 'deal', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 8, 'name' => 'Drinks', 'slug' => 'drinks', 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 }

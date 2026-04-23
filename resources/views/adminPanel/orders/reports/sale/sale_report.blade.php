@@ -113,13 +113,13 @@ use App\Helpers\Helper;
                                             <span class="d-none d-md-block">Location wise Sale Report</span>
                                         </a>
                                     </li> --}}
-                                    {{-- <li class="nav-item">
+                                    <li class="nav-item">
                                         <a href="#employee_wise_sale_report" data-bs-toggle="tab" aria-expanded="false"
                                             class="nav-link rounded-0">
                                             <i class="mdi mdi-settings-outline d-md-none d-block"></i>
                                             <span class="d-none d-md-block">Employee wise Sale Report</span>
                                         </a>
-                                    </li> --}}
+                                    </li>
                                     {{-- <li class="nav-item">
                                         <a href="#profit_margin" data-bs-toggle="tab" aria-expanded="false"
                                             class="nav-link rounded-0">
@@ -254,13 +254,13 @@ use App\Helpers\Helper;
                                                                 data-toggle="select2">
                                                                 <option value="all_products" selected>All Product</option>
                                                                 @isset($allProducts)
-                                                                    @foreach ($allProducts as $allProduct)
-                                                                        <option value="{{ $allProduct->id }}">
-                                                                            {{ $allProduct->product_variant_name }}</option>
-                                                                    @endforeach
+                                                                @foreach ($allProducts as $allProduct)
+                                                                <option value="{{ $allProduct->id }}">
+                                                                    {{ $allProduct->product_variant_name }}</option>
+                                                                @endforeach
                                                                 @endisset
                                                             </select>
-                                                        </div>   --}}
+                                                        </div> --}}
 
                                                         <div class="col-md-2">
                                                             <label class="form-label">Start Date</label>
@@ -300,7 +300,8 @@ use App\Helpers\Helper;
                                                                 @isset($allBrands)
                                                                     @foreach ($allBrands as $allBrand)
                                                                         <option value="{{ $allBrand->id }}">
-                                                                            {{ $allBrand->name }}</option>
+                                                                            {{ $allBrand->name }}
+                                                                        </option>
                                                                     @endforeach
                                                                 @endisset
                                                             </select>
@@ -344,7 +345,8 @@ use App\Helpers\Helper;
                                                                 @isset($allCustomers)
                                                                     @foreach ($allCustomers as $allCustomer)
                                                                         <option value="{{ $allCustomer->id }}">
-                                                                            {{ $allCustomer->name }}</option>
+                                                                            {{ $allCustomer->name }}
+                                                                        </option>
                                                                     @endforeach
                                                                 @endisset
                                                             </select>
@@ -387,7 +389,8 @@ use App\Helpers\Helper;
                                                                 @isset($allCategories)
                                                                     @foreach ($allCategories as $allCategorie)
                                                                         <option value="{{ $allCategorie->id }}">
-                                                                            {{ $allCategorie->name }}</option>
+                                                                            {{ $allCategorie->name }}
+                                                                        </option>
                                                                     @endforeach
                                                                 @endisset
                                                             </select>
@@ -430,7 +433,8 @@ use App\Helpers\Helper;
                                                                 @isset($alllocations)
                                                                     @foreach ($alllocations as $alllocation)
                                                                         <option value="{{ $alllocation->id }}">
-                                                                            {{ $alllocation->name }}</option>
+                                                                            {{ $alllocation->name }}
+                                                                        </option>
                                                                     @endforeach
                                                                 @endisset
                                                             </select>
@@ -473,7 +477,8 @@ use App\Helpers\Helper;
                                                                 @isset($allemployees)
                                                                     @foreach ($allemployees as $allemployee)
                                                                         <option value="{{ $allemployee->id }}">
-                                                                            {{ $allemployee->name }}</option>
+                                                                            {{ $allemployee->name }}
+                                                                        </option>
                                                                     @endforeach
                                                                 @endisset
                                                             </select>
@@ -550,13 +555,13 @@ use App\Helpers\Helper;
 
     <script>
         @if (session('success'))
-            $(document).ready(function() {
+            $(document).ready(function () {
                 $("#success-alert-modal").modal('show');
             })
         @endif
 
         @if (session('error'))
-            $(document).ready(function() {
+            $(document).ready(function () {
                 $("#error-alert-modal").modal('show');
             })
         @endif
@@ -569,15 +574,15 @@ use App\Helpers\Helper;
                     next: "<i class='mdi mdi-chevron-right'>"
                 }
             },
-            drawCallback: function() {
+            drawCallback: function () {
                 $(".dataTables_paginate > .pagination").addClass("pagination-rounded")
             }
         })
     </script>
 
     <script>
-        $(document).ready(function() {
-            $('select[name="category_id"]').on('change', function() {
+        $(document).ready(function () {
+            $('select[name="category_id"]').on('change', function () {
                 const selectedCategory = $(this).val();
                 $.ajax({
                     url: '{{ url('/get-category-product') }}',
@@ -585,17 +590,17 @@ use App\Helpers\Helper;
                     data: {
                         category_id: selectedCategory
                     },
-                    success: function(data) {
+                    success: function (data) {
                         const productSelect = $('select[name="product_id"]');
                         productSelect.empty();
                         productSelect.append(
                             '<option value="all_products" selected>All Product</option>');
-                        $.each(data.products, function(index, product) {
+                        $.each(data.products, function (index, product) {
                             productSelect.append('<option value="' + product.id + '">' +
                                 product.name + '</option>');
                         });
                     },
-                    error: function(xhr, status, error) {
+                    error: function (xhr, status, error) {
                         console.error('Error fetching products:', error);
                     }
                 });
